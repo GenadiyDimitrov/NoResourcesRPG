@@ -155,8 +155,11 @@
                     }
                 </div>
             }
-            <input @bind="newCharName" placeholder="New Character name" />
-            <button class="btn btn-primary" @onclick="CreateNew">Create New Character</button>
+            @if (characters == null || characters.Count < 8)
+            {
+                <input @bind="newCharName" placeholder="New Character name" />
+                <button class="btn btn-primary" @onclick="CreateNew">Create New Character</button>
+            }
         </div>
     </Authorized>
 </AuthorizeView>

@@ -44,7 +44,11 @@ public class CharacterController : ControllerBase
     {
         var user = await _userManager.GetUserAsync(User);
         if (user == null) return Unauthorized();
-        if (await _db.Characters.AnyAsync(c => c.Name == name))
+        if (await _db.Characters.AsNoTracking().Where(x => x.UserId == user.Id).CountAsync() >= 8)
+        {
+            return BadRequest("Cannot exceed 8 characters");
+        }
+        if (await _db.Characters.AsNoTracking().AnyAsync(c => c.Name == name))
         {
             return BadRequest("Character name already exists");
         }
