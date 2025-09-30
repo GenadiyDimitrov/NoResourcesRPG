@@ -1,0 +1,284 @@
+﻿@using System.Net.Http.Json
+@using Microsoft.AspNetCore.Components.Authorization
+@using NoResourcesRPG.Client.Helpers
+@using NoResourcesRPG.Client.Services
+@using NoResourcesRPG.Shared.Models
+
+@page "/"
+
+@inject HttpClient Http
+@inject ITokenService TokenService
+@inject ICharacterService CharacterService
+@inject CustomAuthStateProvider AuthStateProvider
+@inject NavigationManager Nav
+<style>
+    .d-flex {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .user-info {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+    }
+
+    .char {
+        border: 1px solid gray;
+        border-radius: 5px;
+        margin: 2px 0px 2px 0px;
+        padding: 5px;
+    }
+
+    .btn {
+        width: 100px;
+        margin: 5px;
+        color: black;
+        cursor: pointer;
+        border-radius: 5px;
+        padding: 10px;
+        font-weight: bold;
+        border: none;
+        transition: background-color 0.3s, border-color 0.3s;
+        background-color: gray;
+        border-color: dimgray;
+    }
+
+    .char-selected {
+        border: 2px solid lime;
+    }
+
+    .btn-primary {
+        background-color: dodgerblue;
+        border-color: royalblue;
+    }
+
+    .btn-delete {
+        color: yellow;
+        background-color: #800;
+        border-color: #200;
+    }
+
+    .char-info {
+        margin: 5px;
+    }
+
+        .char-info > .row {
+            color: white
+        }
+
+            .char-info > .row > strong {
+                color: cornflowerblue
+            }
+</style>
+<AuthorizeView>
+    <NotAuthorized>
+        <h3>Login</h3>
+        <div class="d-flex">
+            <input @bind="identifier" placeholder="Email or username" />
+            <input @bind="password" placeholder="Password" type="password" />
+            <button class="btn btn-primary" @onclick="DoLogin">Login</button>
+        </div>
+        <p>@status</p>
+
+        <p>
+            Don't have an account?
+            <a href="/account/register">Register Here</a>
+        </p>
+    </NotAuthorized>
+
+    <Authorized>
+        <div class="d-flex">
+            <div class="user-info">
+                <p>Welcome, @userName</p>
+                <button @onclick="Logout">Logout</button>
+            </div>
+
+            <h4>Your Characters</h4>
+            @if (characters == null)
+            {
+                <p><em>Loading...</em></p>
+            }
+            else if (characters.Count == 0)
+            {
+                <p>You have no characters yet.</p>
+            }
+            else
+            {
+                <ul>
+                    @foreach (var c in characters)
+                    {
+                        <li>
+                            <div class="char row @(selected == c ? "char-selected" : "")" style="background-color:@(c.Color ?? "#333");" @onclick="() => SelectChar(c)">
+                                <strong>@c.Name</strong> — Lvl (@c.Level)
+                                <button class="btn btn-delete" @onclick="() => Delete(c)">Delete</button>
+                                <button class="btn btn-primary" @onclick="() => GoToGame(c)">Go to Game</button>
+                            </div>
+                        </li>
+                    }
+                </ul>
+            }
+            @if (selected != null)
+            {
+                <div class="char-info d-flex">
+                    <h3>Selected</h3>
+                    <div class="row">
+                        <strong>Name</strong> @selected.Name
+                    </div>
+                    <div class="row">
+                        <strong>Level</strong> @selected.Level
+                    </div>
+                    <div class="row">
+                        <strong>View Range</strong> @selected.ViewRange
+                    </div>
+                    <div class="row">
+                        <strong>Health</strong> @($"{selected.Health}/{selected.MaxHealth}")
+                    </div>
+                    <div class="row">
+                        <strong>Position</strong> @($"{selected.X}x{selected.Y}")
+                    </div>
+                    @if (selected.Inventory.Count > 0)
+                    {
+                        <div class="inventory">
+                            <ul>
+                                @foreach (var group in selected.Inventory.Values)
+                                {
+                                    @foreach (var item in group.Values)
+                                    {
+                                        <li style="color:@item.Color">@($"{item.Name} - {item.Amount}")</li>
+                                    }
+                                }
+                            </ul>
+                        </div>
+                    }
+                </div>
+            }
+            <input @bind="newCharName" placeholder="New Character name" />
+            <button class="btn btn-primary" @onclick="CreateNew">Create New Character</button>
+        </div>
+    </Authorized>
+</AuthorizeView>
+
+@code {
+    private string? userName;
+    private List<Character>? characters;
+    private Character? selected;
+    string newCharName = "";
+    string identifier = "";
+    string password = "";
+    string status = "";
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        if (user.Identity?.IsAuthenticated == true)
+        {
+            userName = user.Identity.Name;
+
+            try
+            {
+                characters = await Http.GetFromJsonAsync<List<Character>>("api/character/my");
+                await InvokeAsync(StateHasChanged);
+            }
+            catch
+            {
+                characters = [];
+            }
+        }
+    }
+
+    private async Task Logout()
+    {
+        await CharacterService.RemoveCurrentCharacterAsync();
+        await AuthStateProvider.Logout();
+        Nav.NavigateTo("/", forceLoad: true);
+    }
+    private async Task UpdateCharsCollection()
+    {
+        try
+        {
+            characters = await Http.GetFromJsonAsync<List<Character>>("api/character/my");
+        }
+        catch
+        {
+            characters = [];
+        }
+        await InvokeAsync(StateHasChanged);
+    }
+
+    async void SelectChar(Character c)
+    {
+        await CharacterService.SetCurrentCharacterAsync(c.Id);
+        selected = c;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    async void Delete(Character c)
+    {
+        if (selected != null && selected.Id == await CharacterService.GetCurrentCharacterAsync())
+        {
+            await CharacterService.RemoveCurrentCharacterAsync();
+            selected = null;
+        }
+
+        var resp = await Http.DeleteAsync($"api/character/my/delete/{c.Id}");
+        if (!resp.IsSuccessStatusCode)
+        {
+            var err = await resp.Content.ReadAsStringAsync();
+            status = "Create failed: " + err;
+            return;
+        }
+
+        await UpdateCharsCollection();
+    }
+
+    void GoToGame(Character? c = null)
+    {
+        if (c is not null)
+            SelectChar(c);
+        if (selected is null) return;
+        Nav.NavigateTo("/game");
+    }
+
+    async void CreateNew()
+    {
+        if (string.IsNullOrEmpty(newCharName)) return;
+        var resp = await Http.PostAsJsonAsync("api/character/my/create", newCharName);
+        if (!resp.IsSuccessStatusCode)
+        {
+            var err = await resp.Content.ReadAsStringAsync();
+            status = "Create failed: " + err;
+            return;
+        }
+
+        await UpdateCharsCollection();
+    }
+    async Task DoLogin()
+    {
+        await CharacterService.RemoveCurrentCharacterAsync();
+        var resp = await Http.PostAsJsonAsync("api/account/login", new LoginRequest(identifier, password));
+        if (!resp.IsSuccessStatusCode)
+        {
+            status = "Login failed";
+            return;
+        }
+
+        var payload = await resp.Content.ReadFromJsonAsync<AuthResult>
+    ();
+        if (payload is null)
+        {
+            status = "Invalid response";
+            return;
+        }
+
+        await TokenService.SetTokenAsync(payload.Token);
+        AuthStateProvider.NotifyAuthenticationStateChanged();
+
+        Nav.NavigateTo("/");
+    }
+
+    public record AuthResult(string Token, long ExpiresInSeconds);
+}

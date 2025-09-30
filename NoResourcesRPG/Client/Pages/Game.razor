@@ -1,0 +1,192 @@
+﻿@page "/game"
+
+@using NoResourcesRPG.Shared
+@using NoResourcesRPG.Shared.DTOs;
+@using NoResourcesRPG.Client.Services
+@using NoResourcesRPG.Shared.Enums
+@using NoResourcesRPG.Shared.Models
+
+
+@inject GameService GameService
+@inject CanvasService CanvasService
+
+
+<style>
+    .wrapper {
+        display: flex;
+        flex-direction: row;
+        flex-grow: 1;
+        gap: 10px;
+    }
+
+    #gameCanvas {
+        flex-grow: 1;
+        border: solid black 1px;
+    }
+</style>
+
+<div class="wrapper">
+    @if (_self != null)
+    {
+        <div class="inventory">
+            <ul>
+                @foreach (var group in _self.Inventory.Values)
+                {
+                    @foreach (var item in group.Values)
+                    {
+                        <li style="color:@item.Color">@($"{item.Name} - {item.Amount}")</li>
+                    }
+                }
+            </ul>
+        </div>
+    }
+    <canvas id="gameCanvas"
+            tabindex="0" @onkeydown="HandleKey"
+            @onclick="OnCanvasClick"></canvas>
+</div>
+@code {
+    private int recSize = GlobalConst.TileSize;
+    private MapUpdateDto map = new();
+    private const string canvasId = "gameCanvas";
+    private Character? _self = null;
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            GameService.OnPlayerDisconnected += async (id) =>
+            {
+                if (map.Players.Remove(id))
+                    await Draw();
+            };
+            // GameService.OnPlayerUpdate += async (update) =>
+            // {
+            //     map.Players[update.Id] = update;
+            //     await Draw();
+            // };
+
+            GameService.OnMapUpdate += async (update) =>
+            {
+                _self = update.Player;
+                map = update;
+                await Draw();
+            };
+            // GameService.OnSelfUpdate += async (player) =>
+            // {
+            //     _self = player;
+
+            //     await Draw();
+            //     StateHasChanged();
+            // };
+            await GameService.Init();
+        }
+    }
+
+    private async Task Draw()
+    {
+        await CanvasService.ClearAsync(canvasId);
+
+        await CanvasService.DrawResourcesAsync(canvasId, map.Resources, recSize);
+        await CanvasService.DrawPlayersAsync(canvasId, map.Players.Values, recSize);
+        if (_self is not null) await CanvasService.DrawSelfAsync(canvasId, _self, recSize);
+    }
+
+    private async Task HandleKey(KeyboardEventArgs e)
+    {
+        if (_self != null)
+        {
+            int dx = 0, dy = 0;
+            string action = null;
+
+            // Movement keys
+            switch (e.Key)
+            {
+                case "ArrowUp": dy = -1; break;
+                case "ArrowDown": dy = 1; break;
+                case "ArrowLeft": dx = -1; break;
+                case "ArrowRight": dx = 1; break;
+                case " ": // spacebar gather
+
+                    var px = _self.X * recSize + recSize / 2;
+                    var py = _self.Y * recSize + recSize / 2;
+                    await Gather(px, py);
+                    return;
+            }
+
+            // System / action keys
+            switch (e.Key)
+            {
+                case "Control":        // Ctrl
+                    action = "Special";
+                    break;
+                case "Alt":            // Alt
+                    action = "AltAction";
+                    break;
+                case "Shift":          // Shift
+                    action = "Run";
+                    break;
+            }
+
+
+            // Movement
+            if (dx != 0 || dy != 0)
+            {
+                await GameService.Move(new PlayerActionDto
+                {
+                    PlayerId = _self.Id,
+                    Action = "Move",
+                    X = dx,
+                    Y = dy
+                });
+            }
+
+            // Action (space/ctrl/alt/shift)
+            if (!string.IsNullOrEmpty(action))
+            {
+                await GameService.Action(new PlayerActionDto
+                {
+                    PlayerId = _self.Id,
+                    Action = action,
+                    X = 0,
+                    Y = 0
+                });
+            }
+        }
+    }
+    private async Task OnCanvasClick(MouseEventArgs e)
+    {
+        var clickX = e.OffsetX;
+        var clickY = e.OffsetY;
+        return;
+        await Gather(clickX, clickY);
+    }
+    private async Task Gather(double x, double y)
+    {
+        if (_self is null || !map.Resources.Any())
+            return;
+
+        var res = map.Resources
+                     .FirstOrDefault(r =>
+                     x >= r.X * recSize &&
+                     x <= r.X * recSize + recSize &&
+                     y >= r.Y * recSize &&
+                     y <= r.Y * recSize + recSize);
+
+        if (res is null) return;
+
+        Console.WriteLine($"{res.Type} Gathared");
+        // Check if player is next to the resource
+        int dx = Math.Abs(_self.X - res.X);
+        int dy = Math.Abs(_self.Y - res.Y);
+
+        if (dx <= 1 && dy <= 1) // player can be adjacent or on the tile
+        {
+            await GameService.Collect(new PlayerActionDto
+            {
+                PlayerId = _self.Id,
+                Action = "Gather",
+                X = res.X,
+                Y = res.Y
+            });
+        }
+    }
+}

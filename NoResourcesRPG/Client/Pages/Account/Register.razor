@@ -1,0 +1,84 @@
+﻿@using System.Net.Http.Json
+@using Microsoft.AspNetCore.Components.Authorization
+@using NoResourcesRPG.Client.Helpers
+@using NoResourcesRPG.Client.Services
+@using NoResourcesRPG.Shared.Models
+
+@page "/account/register"
+
+@inject HttpClient Http
+@inject ITokenService TokenService
+@inject CustomAuthStateProvider AuthStateProvider
+@inject NavigationManager Nav
+
+<h3>Register</h3>
+
+<AuthorizeView>
+    <NotAuthorized>
+        <div>
+            <input @bind="userName" placeholder="UserName" />
+            <input @bind="email" placeholder="Email" />
+            <input @bind="displayName" placeholder="DisplayName" />
+            <input @bind="password" placeholder="Password" type="password" />
+            <button @onclick="DoRegister">Register</button>
+        </div>
+
+        <p>@status</p>
+    </NotAuthorized>
+    <Authorized>
+        <p>Please logout first!</p>
+    </Authorized>
+</AuthorizeView>
+@code {
+    string userName = "";
+    string displayName = "";
+    string email = "";
+    string password = "";
+    string status = "";
+
+    async Task DoRegister()
+    {
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            status = "Email is required";
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(password))
+        {
+            status = "Password is required";
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(userName))
+        {
+            status = "Username is required";
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(displayName))
+        {
+            status = "Display Name is required";
+            return;
+        }
+
+        var resp = await Http.PostAsJsonAsync("api/account/register", new RegisterRequest(displayName, userName, email, password));
+        if (!resp.IsSuccessStatusCode)
+        {
+            var err = await resp.Content.ReadAsStringAsync();
+            status = "Register failed: " + err;
+            return;
+        }
+
+        Nav.NavigateTo("/");
+        // // Optionally auto-login:
+        // var loginResp = await Http.PostAsJsonAsync("api/account/login", new { Email = email, Password = password });
+        // if (loginResp.IsSuccessStatusCode)
+        // {
+        //     var payload = await loginResp.Content.ReadFromJsonAsync<AuthResult>();
+        //     await TokenService.SetTokenAsync(payload!.Token);
+        //     AuthStateProvider.NotifyAuthenticationStateChanged();
+        //     status = "Registered and logged in";
+        // }
+        // else status = "Registered but auto-login failed";
+    }
+
+    public record AuthResult(string Token, long ExpiresInSeconds);
+}
