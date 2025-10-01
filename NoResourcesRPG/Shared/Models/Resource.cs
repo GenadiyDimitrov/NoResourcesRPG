@@ -1,4 +1,5 @@
 ﻿using NoResourcesRPG.Shared.Enums;
+using NoResourcesRPG.Shared.Static;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -7,12 +8,6 @@ using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 
 namespace NoResourcesRPG.Shared.Models;
-public record class ResourceInventoryData
-{
-    public string Color { get; set; }
-    public string Name { get; set; }
-    public int Amount { get; set; } = 1;
-}
 public record class Resource
 {
     public static bool Create(int seed, int x, int y, out Resource resource)

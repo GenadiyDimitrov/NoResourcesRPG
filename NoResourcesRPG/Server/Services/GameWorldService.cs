@@ -13,9 +13,24 @@ public class GameWorldService
     private readonly int _globalMapSeed;
     private readonly Dictionary<string, Character> _players = [];
     private readonly Dictionary<string, Resource> _resources = [];
+    private readonly PriorityQueue<TimedEvent, DateTime> eventQueue = new();
     public GameWorldService()
     {
         _globalMapSeed = 12345;
+    }
+
+    public PriorityQueue<TimedEvent, DateTime> Queue => eventQueue;
+
+    private int GetTileSeed(int x, int y)
+    {
+        unchecked
+        {
+            int seed = 17;
+            seed = seed * 31 + _globalMapSeed; // incorporate global map seed
+            seed = seed * 31 + x;
+            seed = seed * 31 + y;
+            return seed;
+        }
     }
     public void RemovePlayer(string playerId)
     {
@@ -180,15 +195,8 @@ public class GameWorldService
             Resources = nearbyResources
         };
     }
-    private int GetTileSeed(int x, int y)
+    public void AddEvent(TimedEvent e)
     {
-        unchecked
-        {
-            int seed = 17;
-            seed = seed * 31 + _globalMapSeed; // incorporate global map seed
-            seed = seed * 31 + x;
-            seed = seed * 31 + y;
-            return seed;
-        }
+        eventQueue.Enqueue(e, e.ExecuteAt);
     }
 }

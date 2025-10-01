@@ -6,10 +6,6 @@ using System.Text;
 using System.Threading.Tasks;
 
 namespace NoResourcesRPG.Shared.Models;
-
-public record RegisterRequest(string DisplayName, string UserName, string Email, string Password);
-public record LoginRequest(string Identifier, string Password);
-public record AuthResult(string Token, TimeSpan ExpiresTimespan);
 public class Character
 {
 

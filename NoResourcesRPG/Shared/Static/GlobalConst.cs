@@ -4,11 +4,9 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace NoResourcesRPG.Shared.Enums;
-public enum ResourceType
+namespace NoResourcesRPG.Shared.Static;
+public static class GlobalConst
 {
-    None,
-    Wood,
-    Stone,
-    Herb
+    public const int TileSize = 32;
 }
+

@@ -10,7 +10,7 @@ namespace NoResourcesRPG.Client.Helpers;
 public class CustomAuthStateProvider : AuthenticationStateProvider
 {
     private readonly ITokenService _tokenService;
-    private ClaimsPrincipal _anonymous = new ClaimsPrincipal(new ClaimsIdentity());
+    private ClaimsPrincipal _anonymous = new(new ClaimsIdentity());
 
     public CustomAuthStateProvider(ITokenService tokenService)
     {

@@ -5,8 +5,8 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using NoResourcesRPG.Server.Database;
 using NoResourcesRPG.Server.Database.Models;
-using NoResourcesRPG.Shared;
 using NoResourcesRPG.Shared.Models;
+using NoResourcesRPG.Shared.Static;
 using System.Drawing;
 
 namespace NoResourcesRPG.Server.Controllers;

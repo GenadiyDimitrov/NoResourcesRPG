@@ -25,4 +25,8 @@
 		<ProjectReference Include="..\Shared\NoResourcesRPG.Shared.csproj" />
 	</ItemGroup>
 
+	<ItemGroup>
+	  <Folder Include="Helpers\" />
+	</ItemGroup>
+
 </Project>

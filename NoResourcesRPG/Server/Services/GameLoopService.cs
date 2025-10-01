@@ -1,136 +1,196 @@
 ﻿using Mapster;
-using MapsterMapper;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using NoResourcesRPG.Server.Database;
-using NoResourcesRPG.Server.Database.Models;
-using NoResourcesRPG.Server.Helpers;
 using NoResourcesRPG.Server.Hubs;
-using NoResourcesRPG.Server.Mappers;
-using NoResourcesRPG.Shared;
+using NoResourcesRPG.Server.Services;
 using NoResourcesRPG.Shared.Models;
-using System;
-using static NoResourcesRPG.Server.Helpers.GameLoopHelpers;
-
-namespace NoResourcesRPG.Server.Services
+using NoResourcesRPG.Shared.Static;
+using System.Collections.Concurrent;
+using System.Diagnostics;
+namespace NoResourcesRPG.Server.Services;
+public class GameLoopService : BackgroundService
 {
-    public class GameLoopService : BackgroundService
+    private readonly SemaphoreSlim _physicsLock = new(1, 1);
+    private readonly IServiceScopeFactory _scopeFactory;
+    private readonly GameWorldService _world;
+    private readonly IHubContext<GameHub> _hub;
+    private readonly ILogger<GameLoopService> _logger;
+    // Thread-safe dirty players
+    private readonly ConcurrentDictionary<string, Character?> _dirtyPlayers = new();
+
+    private int _pendingPhysicsTicks = 0;
+
+
+    public GameLoopService(
+        IHubContext<GameHub> hub,
+        GameWorldService world,
+        IServiceScopeFactory scopeFactory,
+        ILogger<GameLoopService> logger)
     {
-        private IServiceScopeFactory _scopeFactory;
-        private readonly GameWorldService _world;
-        private readonly IHubContext<GameHub> _hub;
-        public readonly Dictionary<string, Character?> _dirtyPlayers = [];
-        private readonly TimeSpan _physicsInterval = TimeSpan.FromMilliseconds(17); // ~60hz 60/s
-        private readonly TimeSpan _networkInterval = TimeSpan.FromMilliseconds(100); // 10hz 10/s
-        private readonly TimeSpan _backupInterval = TimeSpan.FromSeconds(60); // 1hz 1/m
+        _scopeFactory = scopeFactory;
+        _world = world;
+        _hub = hub;
+        _logger = logger;
 
-        private DateTime _lastPhysics = DateTime.UtcNow;
-        private DateTime _lastNetwork = DateTime.UtcNow;
-        private DateTime _lastBackup = DateTime.UtcNow;
+        var now = DateTime.UtcNow;
+    }
 
-        public GameLoopService(IHubContext<GameHub> hub, GameWorldService world, IServiceScopeFactory scopeFactory)
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        var physicsInterval = TimeSpan.FromTicks(166667); // ~16.6667 ms
+        var networkInterval = TimeSpan.FromMilliseconds(100);
+        var backupInterval = TimeSpan.FromSeconds(60);
+
+        var stopwatch = Stopwatch.StartNew();
+
+        var nextPhysics = stopwatch.Elapsed;
+        var nextNetwork = stopwatch.Elapsed + networkInterval;
+        var nextBackup = stopwatch.Elapsed + backupInterval;
+
+        while (!stoppingToken.IsCancellationRequested)
         {
-            _scopeFactory = scopeFactory;
-            _world = world;
-            _hub = hub;
-            SetHubContext(hub);
-        }
+            var now = stopwatch.Elapsed;
 
-        protected override async Task ExecuteAsync(CancellationToken stoppingToken)
-        {
-            while (!stoppingToken.IsCancellationRequested)
+            // Run physics with accumulator (may run multiple times if lagging)
+            // --- Increment pending physics ticks ---
+            while (now >= nextPhysics)
             {
-                var now = DateTime.UtcNow;
-                if (now - _lastPhysics >= _physicsInterval)
-                {
-                    _lastPhysics = now;
-                    DoPhysics(now);
-                }
-
-                if (now - _lastNetwork >= _networkInterval)
-                {
-                    _lastNetwork = now;
-                    await FlushNetworkAsync();
-                }
-
-                if (now - _lastBackup >= _backupInterval)
-                {
-                    _lastBackup = now;
-                    await BackupAsync();
-                }
-
-                await Task.Delay(5, stoppingToken);
+                _pendingPhysicsTicks++;
+                if (_pendingPhysicsTicks > 5)
+                    _pendingPhysicsTicks = 5; // cap to avoid spiraling
+                nextPhysics += physicsInterval;
             }
-        }
-
-        private void DoPhysics(DateTime now)
-        {
-        }
-
-        private async Task BackupAsync()
-        {
-            if (_dirtyPlayers.Count == 0) return;
-            List<Character?> playersToUpdate;
-            lock (_dirtyPlayers) // ensure thread safety if multiple threads add/clear
+            // --- Process one physics tick asynchronously ---
+            if (_pendingPhysicsTicks > 0)
             {
-                if (_dirtyPlayers.Count == 0) return;
-                playersToUpdate = [.. _dirtyPlayers.Values];
-                _dirtyPlayers.Clear();
-            }
-            var scope = _scopeFactory.CreateScope();
-            var dbContext = scope.ServiceProvider.GetService<NoResDbContext>();
-            await using var transaction = await dbContext.Database.BeginTransactionAsync();
-            try
-            { // Collect ids once, do a single DB round-trip
-                var ids = playersToUpdate
-                    .Where(c => c != null)
-                    .Select(c => c!.Id)
-                    .ToList();
-                if (ids.Count == 0)
-                    return;
-
-                // Load all entities in one query instead of per-player
-                var entities = await dbContext.Characters
-                    .Where(x => ids.Contains(x.Id))
-                    .ToDictionaryAsync(x => x.Id);
-                foreach (var @char in playersToUpdate)
+                if (await _physicsLock.WaitAsync(0, stoppingToken)) // only run if free
                 {
-                    if (@char is null) continue;
-                    if (!entities.TryGetValue(@char.Id, out var entity)) continue;
-
-                    // Mapster: dto → entity (in-place update)
-                    @char.Adapt(entity);
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            await DoPhysicsAsync(DateTime.UtcNow);
+                        }
+                        finally
+                        {
+                            Interlocked.Decrement(ref _pendingPhysicsTicks);
+                            _physicsLock.Release();
+                        }
+                    }, stoppingToken);
                 }
-
-                // EF is already tracking the entities, no need for UpdateRange
-                await dbContext.SaveChangesAsync();
-
-                // Commit transaction
-                await transaction.CommitAsync();
             }
-            catch (Exception ex)
+
+            // Network flush (async, don’t block physics)
+            if (now >= nextNetwork)
             {
-                // Rollback on error
-                await transaction.RollbackAsync();
+                _ = Task.Run(FlushNetworkAsync, stoppingToken);
+                nextNetwork += networkInterval;
             }
-        }
 
-        private async Task FlushNetworkAsync()
-        {
-            if (GameHub._dirtyPlayers.Count == 0) return;
-            HashSet<string> playersToUpdate = [];
-            playersToUpdate.UnionWith(GameHub._dirtyPlayers);
-            GameHub._dirtyPlayers.Clear();
-            foreach (var playerId in playersToUpdate)
+            // Backup (async, don’t block physics)
+            if (now >= nextBackup)
             {
-                if (!GameHub._playerIdToConnectionId.TryGetValue(playerId, out var connectionId)) continue;
-                var player = _world.GetPlayer(playerId);
-                if (player == null) continue;
-                var nearby = _world.GetNearby(playerId);
-                _hub.Clients.Client(connectionId).SendAsync(SignalRMethods.UpdateNearby, nearby);
-                _dirtyPlayers[playerId] = player;
+                _ = Task.Run(BackupAsync, stoppingToken);
+                nextBackup += backupInterval;
             }
+
+            // Sleep until next event
+            var nextTick = new[] { nextPhysics, nextNetwork, nextBackup }.Min();
+            var delay = nextTick - stopwatch.Elapsed;
+            if (delay > TimeSpan.Zero)
+                await Task.Delay(delay, stoppingToken);
         }
     }
 
+    private async Task DoPhysicsAsync(DateTime now)
+    {
+        int maxEventsPerTick = 1000;
+        int processed = 0;
+
+        while (_world.Queue.Count > 0 && _world.Queue.Peek().ExecuteAt <= now && processed < maxEventsPerTick && processed < maxEventsPerTick)
+        {
+            var e = _world.Queue.Dequeue();
+            await e.Action();
+
+            if (e.Repeating)
+            {
+                e.ExecuteAt += e.Interval;
+                _world.Queue.Enqueue(e, e.ExecuteAt);
+            }
+            processed++;
+        }
+    }
+
+    private async Task BackupAsync()
+    {
+        if (_dirtyPlayers.IsEmpty) return;
+
+        List<Character?> playersToUpdate = [.. _dirtyPlayers.Values];
+        _dirtyPlayers.Clear();
+
+        if (playersToUpdate.Count == 0) return;
+
+        try
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<NoResDbContext>();
+
+            await using var transaction = await dbContext.Database.BeginTransactionAsync();
+
+            var ids = playersToUpdate
+                .Where(c => c != null)
+                .Select(c => c!.Id)
+                .ToList();
+
+            if (ids.Count == 0)
+                return;
+
+            var entities = await dbContext.Characters
+                .Where(x => ids.Contains(x.Id))
+                .ToDictionaryAsync(x => x.Id);
+
+            foreach (var @char in playersToUpdate)
+            {
+                if (@char is null) continue;
+                if (!entities.TryGetValue(@char.Id, out var entity)) continue;
+
+                // Mapster: dto → entity
+                @char.Adapt(entity);
+            }
+
+            await dbContext.SaveChangesAsync();
+            await transaction.CommitAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Backup failed");
+        }
+    }
+
+    private async Task FlushNetworkAsync()
+    {
+        if (GameHub._dirtyPlayers.Count == 0) return;
+
+        HashSet<string> playersToUpdate = [];
+        playersToUpdate.UnionWith(GameHub._dirtyPlayers);
+        GameHub._dirtyPlayers.Clear();
+
+        var tasks = playersToUpdate.Select(async playerId =>
+        {
+            if (!GameHub._playerIdToConnectionId.TryGetValue(playerId, out var connectionId)) return;
+
+            var player = _world.GetPlayer(playerId);
+            if (player == null) return;
+
+            var nearby = _world.GetNearby(playerId);
+            await _hub.Clients.Client(connectionId).SendAsync(SignalRMethods.UpdateNearby, nearby);
+
+            _dirtyPlayers[playerId] = player;
+        });
+
+        await Task.WhenAll(tasks);
+    }
 }

@@ -1,10 +1,5 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿namespace NoResourcesRPG.Shared.Static;
 
-namespace NoResourcesRPG.Shared;
 public static class SignalRMethods
 {
     //server to client
@@ -21,9 +16,5 @@ public static class SignalRMethods
     public const string MovePlayer = "MovePlayer";
     public const string CollectResource = "CollectResource";
     public const string Action = "Action";
-}
-public static class GlobalConst
-{
-    public const int TileSize = 32;
 }
 

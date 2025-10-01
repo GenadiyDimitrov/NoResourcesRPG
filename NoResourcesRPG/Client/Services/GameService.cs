@@ -1,8 +1,8 @@
 ﻿using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.SignalR.Client;
-using NoResourcesRPG.Shared;
 using NoResourcesRPG.Shared.DTOs;
 using NoResourcesRPG.Shared.Models;
+using NoResourcesRPG.Shared.Static;
 
 namespace NoResourcesRPG.Client.Services;
 public class GameService
