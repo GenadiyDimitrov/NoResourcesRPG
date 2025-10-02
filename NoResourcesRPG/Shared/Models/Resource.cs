@@ -13,6 +13,10 @@ public record class Resource
     public static bool Create(int seed, int x, int y, out Resource resource)
     {
         resource = null!;
+
+        if (x < 0 || y < 0)
+            return false;
+
         if (ResourceData.TypesAndSubTypes.Count == 0)
             return false;
 

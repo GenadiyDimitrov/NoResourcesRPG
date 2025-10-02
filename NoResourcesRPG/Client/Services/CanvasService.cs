@@ -1,25 +1,25 @@
 ﻿using Microsoft.JSInterop;
 using NoResourcesRPG.Client.Components;
+using NoResourcesRPG.Shared.DTOs;
 using NoResourcesRPG.Shared.Models;
 
 namespace NoResourcesRPG.Client.Services;
-public class CanvasService
+public class CanvasService : IAsyncDisposable
 {
     private readonly IJSRuntime _js;
+    private DotNetObjectReference<Pages.Game>? _dotNetRef;
     public CanvasService(IJSRuntime js) => _js = js;
-
-    public ValueTask ClearAsync(string canvasId) =>
-        _js.InvokeVoidAsync("canvasHelper.clear", canvasId);
-
-    public ValueTask DrawRectAsync(string canvasId, int x, int y, int w, int h, string color) =>
-        _js.InvokeVoidAsync("canvasHelper.drawRect", canvasId, x, y, w, h, color);
-
-    public ValueTask DrawResourcesAsync(string canvasId, IEnumerable<Resource> resources, int recSize) =>
-        _js.InvokeVoidAsync("canvasHelper.drawResources", canvasId, resources, recSize);
-
-    public ValueTask DrawPlayersAsync(string canvasId, IEnumerable<Character> players, int recSize) =>
-        _js.InvokeVoidAsync("canvasHelper.drawPlayers", canvasId, players, recSize);
-
-    public ValueTask DrawSelfAsync(string canvasId, Character player, int recSize) =>
-        _js.InvokeVoidAsync("canvasHelper.drawSelf", canvasId, player, recSize);
+    public ValueTask DrawWorldAsync(string canvasId, MapUpdateDto map, int recSize) =>
+        _js.InvokeVoidAsync("canvasHelper.drawWorld", canvasId, map.Resources, map.Players.Values, map.Player, recSize);
+    public ValueTask StartRenderLoop(Pages.Game page)
+    {
+        _dotNetRef = DotNetObjectReference.Create(page);
+        return _js.InvokeVoidAsync("canvasHelper.startRenderLoop", _dotNetRef);
+    }
+    public async ValueTask DisposeAsync()
+    {
+        await _js.InvokeVoidAsync("canvasHelper.stopRenderLoop");
+        _dotNetRef?.Dispose();
+        _dotNetRef = null;
+    }
 }

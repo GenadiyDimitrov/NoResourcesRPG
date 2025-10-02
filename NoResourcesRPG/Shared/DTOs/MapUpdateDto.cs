@@ -9,7 +9,7 @@ using System.Threading.Tasks;
 namespace NoResourcesRPG.Shared.DTOs;
 public class MapUpdateDto
 {
-    public Character Player { get; set; }
+    public Character? Player { get; set; }
     public Dictionary<string, Character> Players { get; set; } = [];
     public List<Resource> Resources { get; set; } = [];
 }

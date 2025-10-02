@@ -25,6 +25,13 @@
         margin-bottom: 20px;
     }
 
+    li > .row {
+        display: flex;
+        flex-direction: row;
+        align-items: flex-start;
+        vertical-align: central;
+    }
+
     .char {
         border: 1px solid gray;
         border-radius: 5px;
@@ -111,8 +118,10 @@
                     @foreach (var c in characters)
                     {
                         <li>
-                            <div class="char row @(selected == c ? "char-selected" : "")" style="background-color:@(c.Color ?? "#333");" @onclick="() => SelectChar(c)">
-                                <strong>@c.Name</strong> — Lvl (@c.Level)
+                            <div class="row">
+                                <div class="char row @(selected == c ? "char-selected" : "")" style="background-color:@(c.Color ?? "#333");" @onclick="() => SelectChar(c)">
+                                    <strong>@c.Name</strong> — Lvl (@c.Level)
+                                </div>
                                 <button class="btn btn-delete" @onclick="() => Delete(c)">Delete</button>
                                 <button class="btn btn-primary" @onclick="() => GoToGame(c)">Go to Game</button>
                             </div>
@@ -183,8 +192,7 @@
 
             try
             {
-                characters = await Http.GetFromJsonAsync<List<Character>>("api/character/my");
-                await InvokeAsync(StateHasChanged);
+                await UpdateCharsCollection();
             }
             catch
             {
