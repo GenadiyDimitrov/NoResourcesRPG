@@ -70,7 +70,7 @@ public class GameHub : Hub
             string connectionId = Context.ConnectionId;
             _connectionIdToPlayerId[connectionId] = player.Id;
             _playerIdToConnectionId[player.Id] = connectionId;
-            SendUpdates(player);
+            UpdateDirty(player);
         }
     }
 
@@ -78,15 +78,15 @@ public class GameHub : Hub
     {
         var nearby = _world.GetNearby(action.PlayerId, true);
         var player = _world.UpdatePlayerPosition(action);
-        SendUpdates(player, nearby.Players.Keys);
+        UpdateDirty(player, nearby.Players.Keys);
     }
 
     public void CollectResource(PlayerActionDto action)
     {
         var player = _world.CollectResource(action);
-        SendUpdates(player);
+        UpdateDirty(player);
     }
-    private void SendUpdates(Character? player, IEnumerable<string>? oldNearby = null)
+    private void UpdateDirty(Character? player, IEnumerable<string>? oldNearby = null)
     {
         if (player == null) return;
 
@@ -94,11 +94,6 @@ public class GameHub : Hub
 
         if (nearby == null) return;
 
-        //_ = Clients.Caller.SendAsync(SignalRMethods.UpdatePlayer, player);
-        //_ = Clients.Caller.SendAsync(SignalRMethods.UpdateNearby, nearby);
-
-
-        /*IEnumerable<string>*/
         oldNearby ??= [];
         IEnumerable<string> currentNearby = nearby.Players != null && nearby.Players.Count > 0 ? nearby.Players.Keys : [];
 
@@ -106,16 +101,10 @@ public class GameHub : Hub
         _dirtyPlayers.AddRange(oldNearby);
         _dirtyPlayers.AddRange(currentNearby);
 
-        //var removedNearbyP = oldNearby.Except(currentNearby);
-        //if (removedNearbyP.Any())
-        //    SendDisconnect(removedNearbyP, player.Id); //notify removed players
-        //if (currentNearby.Any())
-        //    _ = Clients.Clients(GetConnectionIds(currentNearby)).SendAsync(SignalRMethods.UpdateNearbyPlayer, player); //notify current players
     }
     private void SendDisconnect(IEnumerable<string>? playerIds, string dcId)
     {
         _dirtyPlayers.AddRange(playerIds ?? []);
-        //_ = Clients.Clients(GetConnectionIds(playerIds)).SendAsync(SignalRMethods.NearbyPlayerDisconnected, dcId);
     }
 
     private static IEnumerable<string> GetConnectionIds(IEnumerable<string>? playerIds)

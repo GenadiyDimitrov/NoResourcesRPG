@@ -12,4 +12,5 @@ public class MapUpdateDto
     public Character? Player { get; set; }
     public Dictionary<string, Character> Players { get; set; } = [];
     public List<Resource> Resources { get; set; } = [];
+    public DateTime TimeOfUpdate { get; set; }
 }

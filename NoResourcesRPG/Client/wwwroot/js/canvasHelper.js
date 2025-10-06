@@ -10,6 +10,29 @@ window.canvasHelper = {
     stopRenderLoop: function () {
         if (rafId) cancelAnimationFrame(rafId);
     },
+    getCanvasSize: function (canvasId) {
+
+        let canvas = document.getElementById(canvasId);
+        if (!canvas) return {
+            width: 0,
+            height: 0,
+            left: 0,
+            top: 0,
+            scaleX: 0,
+            scaleY: 0
+        };
+        let rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.clientWidth / rect.width;
+        const scaleY = canvas.clientHeight / rect.height;
+        return {
+            width: canvas.clientWidth,
+            height: canvas.clientHeight,
+            left: rect.left,
+            top: rect.top,
+            scaleX: scaleX,
+            scaleY: scaleY
+        }
+    },
     drawPlayer: function (ctx, player, px, py, recSize) {
         let radius = recSize / 2;
 
@@ -33,6 +56,14 @@ window.canvasHelper = {
         ctx.fillStyle = "white";
         ctx.textAlign = "center";
         ctx.fillText(`${player.name} [${player.level}]`, px + recSize / 2, py - barHeight - 6);
+    },
+    drawResource: function (ctx, resource, rx, ry, recSize) {
+        ctx.fillStyle = resource.color;
+        ctx.fillRect(rx, ry, recSize, recSize);
+
+        ctx.fillStyle = "black";
+        ctx.fillText(resource.name, rx + recSize / 2, ry + recSize / 3);
+        ctx.fillText(resource.amount, rx + recSize / 2, ry + (2 * recSize / 3));
     },
     drawWorld: function (canvasId, resources, players, self, recSize) {
 
@@ -67,13 +98,7 @@ window.canvasHelper = {
         resources.forEach(resource => {
             let rx = centerX + (resource.x - self.x) * recSize;
             let ry = centerY + (resource.y - self.y) * recSize;
-
-            ctx.fillStyle = resource.color;
-            ctx.fillRect(rx, ry, recSize, recSize);
-
-            ctx.fillStyle = "black";
-            ctx.fillText(resource.name, rx + recSize / 2, ry + recSize / 3);
-            ctx.fillText(resource.amount, rx + recSize / 2, ry + (2 * recSize / 3));
+            this.drawResource(ctx, resource, rx, ry, recSize);
         });
     }
 };

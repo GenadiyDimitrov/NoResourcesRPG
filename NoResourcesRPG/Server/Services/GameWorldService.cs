@@ -192,7 +192,8 @@ public class GameWorldService
         {
             Player = player,
             Players = nearbyPlayers,
-            Resources = nearbyResources
+            Resources = nearbyResources,
+            TimeOfUpdate = DateTime.UtcNow
         };
     }
     public void AddEvent(TimedEvent e)

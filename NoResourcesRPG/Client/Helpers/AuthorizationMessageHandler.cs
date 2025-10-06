@@ -1,12 +1,10 @@
-﻿
-using NoResourcesRPG.Client.Services;
+﻿using NoResourcesRPG.Client.Services;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Threading;
 using System.Threading.Tasks;
 
 namespace NoResourcesRPG.Client.Helpers;
-
 
 public class AuthorizationMessageHandler : DelegatingHandler
 {

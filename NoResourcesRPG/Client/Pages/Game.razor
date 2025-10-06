@@ -1,6 +1,7 @@
 ﻿@page "/game"
 @implements IAsyncDisposable
 
+@using NoResourcesRPG.Client.Helpers
 @using NoResourcesRPG.Client.Services
 @using NoResourcesRPG.Shared
 @using NoResourcesRPG.Shared.DTOs;
@@ -43,18 +44,26 @@
         </div>
     }
     <canvas id="gameCanvas"
-            tabindex="0" @onkeydown="HandleKey"
-            @onclick="OnCanvasClick"></canvas>
+            tabindex="0"
+            @onkeydown="HandleKey"
+            @onpointerdown="(e) => _pointerEventHelper.OnPointerDown(e, CanvasService, canvasId)"
+            @onpointerup="(e) => _pointerEventHelper.OnPointerUp(e, CanvasService, canvasId)"
+            @onpointermove="(e) => _pointerEventHelper.OnPointerMove(e, CanvasService, canvasId)"></canvas>
 </div>
 @code {
+    private const string canvasId = "gameCanvas";
+
+    private PointerEventHelper _pointerEventHelper = new();
     private int recSize = GlobalConst.TileSize;
     private MapUpdateDto map = new();
-    private const string canvasId = "gameCanvas";
     private bool _dirty;
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
         {
+            _pointerEventHelper.OnClick += OnGather;
+            _pointerEventHelper.OnDrag += Move;
             await CanvasService.StartRenderLoop(this);
             GameService.OnPlayerDisconnected += (id) =>
             {
@@ -82,7 +91,29 @@
         _dirty = false;
         await CanvasService.DrawWorldAsync(canvasId, map, recSize);
     }
-
+    private async void Move(double dx, double dy)
+    {
+        if (map.Player != null)
+        {
+            var self = map.Player;
+            int dxInt = 0, dyInt = 0;
+            if (dx > 0) dxInt = 1;
+            else if (dx < 0) dxInt = -1;
+            if (dy > 0) dyInt = 1;
+            else if (dy < 0) dyInt = -1;
+            await Move(self, dxInt, dyInt);
+        }
+    }
+    private async Task Move(Character self, int dx, int dy)
+    {
+        await GameService.Move(new PlayerActionDto
+        {
+            PlayerId = self.Id,
+            Action = "Move",
+            X = dx,
+            Y = dy
+        });
+    }
     private async Task HandleKey(KeyboardEventArgs e)
     {
         if (map.Player != null)
@@ -124,13 +155,7 @@
             // Movement
             if (dx != 0 || dy != 0)
             {
-                await GameService.Move(new PlayerActionDto
-                {
-                    PlayerId = self.Id,
-                    Action = "Move",
-                    X = dx,
-                    Y = dy
-                });
+                await Move(self, dx, dy);
             }
 
             // Action (space/ctrl/alt/shift)
@@ -146,14 +171,21 @@
             }
         }
     }
-    private async Task OnCanvasClick(MouseEventArgs e)
+    public async void OnGather(Size size)
     {
-        var clickX = e.OffsetX;
-        var clickY = e.OffsetY;
-        await Gather(clickX, clickY);
+        if (map.Player is null || !map.Resources.Any())
+            return;
+        var self = map.Player;
+
+        var px = self.X * recSize + recSize / 2;
+        var py = self.Y * recSize + recSize / 2;
+        double worldX = px + (size.Left - (size.Width / 2 - recSize / 2));
+        double worldY = py + (size.Top - (size.Height / 2 - recSize / 2));
+        await Gather(worldX, worldY);
     }
-    private async Task Gather(double x, double y)
+    public async Task Gather(double x, double y)
     {
+        Console.WriteLine($"Try Gathar {x}x{y}");
         if (map.Player is null || !map.Resources.Any())
             return;
 
